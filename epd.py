@@ -118,12 +118,12 @@ class EPD(FrameBuffer):
 
         self._command(b'\x44')  # set Ram-X address start/end position
         self._data(b'\x00')  # X起始点为0（1个字节）
-        self._data(b'\x0C')  # X终止点为（1个字节）0x0F-->(15+1)*8=128
+        self._data(b'\x0C')  # X终止点为（1个字节）0x0C-->(12+1)*8=104  (0x0C=12)
 
         self._command(b'\x45')  # set Ram-Y address start/end position
         self._data(b'\x00')  # Y设置起始点为 0（2个字节）
         self._data(b'\x00')
-        self._data(b'\xDB')  # 终止点为（2个字节）：0x0127-->(295+1)=296
+        self._data(b'\xDB')  # 终止点为（2个字节）：0x00DB-->(219-7)=212 (0x00DB=219)
         self._data(b'\x00')
 
         self._command(b'\x3C')  # BorderWavefrom

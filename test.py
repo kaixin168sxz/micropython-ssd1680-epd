@@ -12,7 +12,8 @@ busy = Pin(0)
 spi = SPI(1, baudrate=2000000, polarity=0, phase=0, sck=sck, miso=miso, mosi=mosi)
 
 # 初始化对象
-epd = EPD(104, 220, spi, cs, dc, rst, busy)
+epd = EPD(104, 212, spi, cs, dc, rst, busy)
+epd.rotation = 3
 
 epd.init_full()  # 初始化（全局刷新模式）
 epd.fill(1)      # 填充白色
