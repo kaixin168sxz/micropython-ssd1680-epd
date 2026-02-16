@@ -60,6 +60,8 @@ self._data(b'\x02')
 
 **如果使用`adafruit_framebuf.Framebuffer`，请将`epd.py`中的第 20~21 行取消注释，并注释 19 行**
 
+**使用`adafruit_framebuf.Framebuffer`时，需要提供相应的字体文件才可以使用 `text`函数！**
+
 在使用 `adafruit_framebuf.Framebuffer` 时，可以通过 `EPD.rotation` 来修改方向 (值为0-3之内的整数)，如：
 
 ```python

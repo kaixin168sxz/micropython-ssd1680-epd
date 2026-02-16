@@ -3,8 +3,8 @@ Driver for ssd1680 epd.
 """
 
 """
-A driver to drive ssd1680 epd in microython.
-Last edited: 2026.2.8
+A driver to drive ssd1680 epd in micropython.
+Last edited: 2026.2.14
 
 MIT License
 Copyright (c) 2017 Waveshare
@@ -21,7 +21,7 @@ from adafruit_framebuf import FrameBuffer, MHMSB   # adafruit_framebuf
 MONO_HMSB = MHMSB
 
 class EPD(FrameBuffer):
-    # LUT表（定义局部刷新的行为）
+    # LUT表(定义局部刷新的行为)
     # https://blog.csdn.net/weixin_53556090/article/details/146292375
     LUT_PARTIAL_UPDATE = bytearray([
         0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -117,13 +117,13 @@ class EPD(FrameBuffer):
         self._data(b'\x03')  # 这里影响内容镜像
 
         self._command(b'\x44')  # set Ram-X address start/end position
-        self._data(b'\x00')  # X起始点为0（1个字节）
-        self._data(b'\x0C')  # X终止点为（1个字节）0x0C-->(12+1)*8=104  (0x0C=12)
+        self._data(b'\x00')  # X起始点为0(1个字节)
+        self._data(b'\x0C')  # X终止点为(1个字节)0x0C-->(12+1)*8=104  (0x0C=12)
 
         self._command(b'\x45')  # set Ram-Y address start/end position
-        self._data(b'\x00')  # Y设置起始点为 0（2个字节）
+        self._data(b'\x00')  # Y设置起始点为 0(2个字节)
         self._data(b'\x00')
-        self._data(b'\xDB')  # 终止点为（2个字节）：0x00DB-->(219-7)=212 (0x00DB=219)
+        self._data(b'\xDB')  # 终止点为(2个字节)：0x00DB-->(219-7)=212 (0x00DB=219)
         self._data(b'\x00')
 
         self._command(b'\x3C')  # BorderWavefrom
@@ -173,33 +173,74 @@ class EPD(FrameBuffer):
         self.wait_until_idle()
 
     @staticmethod
-    def get_sub_buffer(fb, x, y, w, h):
+    def rotate(matrix):
+        """将矩阵逆时针旋转90度"""
+        return list(map(list, zip(*matrix)))[::-1]
+
+    def get_sub_buffer(self, fb: FrameBuffer, x: int, y: int,
+                       w: int, h: int, auto_rotate: bool=True):
+        """获取 `fb` 的部分数据 (`x` `w`必须是8的倍数)"""
+        xy_exchange = False
+        rotation = 0
+        if hasattr(fb, 'rotation') and auto_rotate:
+            rotation = fb.rotation
+            xy_exchange = rotation % 2
+
+        _w, _h = w, h
+        w, h = h if xy_exchange else w, w if xy_exchange else h
         sub_buffer = bytearray(w * h // 8)
         sub_fb = FrameBuffer(sub_buffer, w, h, MONO_HMSB)
 
-        for row in range(0, h):
-            for col in range(0, w):
-                sub_fb.pixel(col, row, fb.pixel(x + col, y + row)) # 复制数据 (fb -> sub_fb)
+        data_map = [[fb.pixel(x + col, y + row) for row in range(0, _h)] for col in range(0, _w)] # 获取原始数据的矩阵
+        for _ in range(rotation): data_map = self.rotate(data_map) # 旋转矩阵
+        [[sub_fb.pixel(col, row, data_map[col][row]) for row in range(0, h)] for col in range(0, w)] # 绘制旋转后的矩阵
 
         return sub_buffer
 
-    def show_part(self, x, y, w, h):
+    def show_part(self, x: int, y: int, w: int, h: int, auto_rotate: bool=True):
+        _x, _y, _w, _h = x & 0xF8, y, w & 0xF8, h
+        if hasattr(self, 'rotation') and auto_rotate:
+            if self.rotation % 2: w, h = h, w
+            if self.rotation == 1:
+                x, y = self.width - w - y, x
+            elif self.rotation == 2:
+                x, y = self.width - w - x, self.height - h - y
+            elif self.rotation == 3:
+                x, y = y, self.height - h - x
+
+        if w > self.width or h > self.height:
+            raise ValueError('w and h must be less than display width and height')
+
         x = x & 0xF8    # 保证x坐标为8的倍数
         w = w & 0xF8    # 保证w宽度为8的倍数
+        # 这里解释一下上面两行代码
+        # 0xF8 (hex) = 0b11111000 (bin)
+        # & 即与 (AND), 只有输入均为真时才输出真，如表
+        # IN1  IN2  OUT
+        #  0    0    0
+        #  1    0    0
+        #  0    1    0
+        #  1    1    1
+        # 已知在二进制中,低位到高位分别为 1 2 4 8 16 32... 其中，只有1,2,4不是8的倍数
+        # 所以，只要确保前三位(1,2,4)为0，就可以确保x/w是8的倍数
+        # 因为AND运算只会保留均为1的结果
+        # 所以只要使前三位低位为0 (0b11111000),就可以保证结果是8的倍数(减去多余的1~7)
+
         x_end = self.width - 1 if x + w >= self.width else x + w - 1
         y_end = self.height - 1 if y + h >= self.height else y + h - 1
 
         self.set_memory_area(x, y, x_end, y_end)
         self.set_memory_pointer(x, y)
 
+        sub_buffer = self.get_sub_buffer(self, _x, _y, _w, _h, auto_rotate)
         # 0x24寄存器控制黑/白
-        self._command(b'\x24', self.get_sub_buffer(self, x, y, w, h))
-        # 0x26寄存器控制第三色 (如红) （单色屏可省略）
+        self._command(b'\x24', sub_buffer)
+        # 0x26寄存器控制第三色 (如红) (单色屏可省略)
         # self._command(b'\x26', self.get_sub_buffer(self, x, y, w, h))
 
         self._command(b'\x22')
         # 0xCF: Enable clock signal -> Enable Analog -> Display with DISPLAY Mode 2 -> Disable Analog -> Disable OSC
-        # （见ssd1680规格书 P26）
+        # (见ssd1680规格书 P26)
         self._data(b'\xCF')
         self._command(b'\x20')
         self.wait_until_idle()
